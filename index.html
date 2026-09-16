@@ -3,38 +3,219 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Granny Mobile - Chromebook Edition</title>
+    <title>Granny 2D - Chromebook Edition</title>
     <style>
         body {
             margin: 0;
-            background-color: #111;
-            color: #fff;
-            font-family: Arial, sans-serif;
+            background-color: #0b0b0b;
+            color: #ff3333;
+            font-family: 'Courier New', Courier, monospace;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 100vh;
+            overflow: hidden;
         }
-        h1 { margin-bottom: 10px; font-size: 20px; text-shadow: 0 0 10px red; }
-        .game-frame {
-            width: 90%;
-            height: 75vh;
-            max-width: 800px;
-            border: 3px solid #444;
-            background-color: #000;
+        h1 { margin: 5px; font-size: 24px; text-shadow: 0 0 8px #ff0000; }
+        #status { margin-bottom: 10px; color: #aaa; font-size: 14px; }
+        canvas {
+            border: 4px solid #333;
+            background-color: #111;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.3);
         }
-        iframe { width: 100%; height: 100%; border: none; }
+        .controls {
+            margin-top: 10px;
+            color: #888;
+            font-size: 12px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
 
-    <h1>Granny - Chromebook Optimized</h1>
-    
-    <div class="game-frame">
-        <!-- Using an optimized lightweight 2D/3D hybrid engine link -->
-        <iframe src="https://mit.edu" allowfullscreen></iframe>
+    <h1>GRANNY: 2D ESCAPE</h1>
+    <div id="status">Days Left: 5 | Inventory: Empty</div>
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+    <div class="controls">
+        Use <b>WASD</b> or <b>Arrow Keys</b> to move. Avoid Granny (Red).<br>
+        Find the <b>Hammer (Yellow)</b> and the <b>Key (Gold)</b> to escape through the <b>Door (Green)</b>!
     </div>
 
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const statusDiv = document.getElementById("status");
+
+        // Game State
+        let days = 5;
+        let gameOver = false;
+        let gameWon = false;
+        let inventory = [];
+
+        // Player Setup (Blue Square)
+        const player = { x: 50, y: 50, size: 20, speed: 4 };
+
+        // Granny Setup (Red Square)
+        const granny = { x: 500, y: 300, size: 22, speed: 1.8 };
+
+        // Items Setup
+        const items = {
+            hammer: { x: 520, y: 60, size: 15, color: "#e6c300", name: "Hammer", found: false },
+            key: { x: 80, y: 320, size: 12, color: "#d4af37", name: "Master Key", found: false }
+        };
+
+        // Obstacles (Walls of the House)
+        const walls = [
+            { x: 150, y: 0, w: 20, h: 150 },
+            { x: 150, y: 220, w: 20, h: 180 },
+            { x: 350, y: 100, w: 20, h: 200 },
+            { x: 450, y: 200, w: 100, h: 20 },
+            // Main Locked Door (Green)
+            { x: 570, y: 180, w: 30, h: 50, isDoor: true }
+        ];
+
+        // Keyboard Input Tracking
+        const keys = {};
+        window.addEventListener("keydown", e => keys[e.key] = true);
+        window.addEventListener("keyup", e => keys[e.key] = false);
+
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.w &&
+                   rect1.x + rect1.size > rect2.x &&
+                   rect1.y < rect2.y + rect2.h &&
+                   rect1.y + rect1.size > rect2.y;
+        }
+
+        function update() {
+            if (gameOver || gameWon) return;
+
+            // Save old position for wall collision reset
+            let oldX = player.x;
+            let oldY = player.y;
+
+            // Player Movement
+            if (keys["ArrowUp"] || keys["w"]) player.y -= player.speed;
+            if (keys["ArrowDown"] || keys["s"]) player.y += player.speed;
+            if (keys["ArrowLeft"] || keys["a"]) player.x -= player.speed;
+            if (keys["ArrowRight"] || keys["d"]) player.x += player.speed;
+
+            // Screen boundary check
+            if (player.x < 0) player.x = 0;
+            if (player.x > canvas.width - player.size) player.x = canvas.width - player.size;
+            if (player.y < 0) player.y = 0;
+            if (player.y > canvas.height - player.size) player.y = canvas.height - player.size;
+
+            // Wall Collisions
+            walls.forEach(wall => {
+                if (checkCollision(player, wall)) {
+                    if (wall.isDoor) {
+                        if (inventory.includes("Hammer") && inventory.includes("Master Key")) {
+                            gameWon = true;
+                        } else {
+                            player.x = oldX;
+                            player.y = oldY;
+                        }
+                    } else {
+                        player.x = oldX;
+                        player.y = oldY;
+                    }
+                }
+            });
+
+            // Granny AI Tracking
+            let dx = player.x - granny.x;
+            let dy = player.y - granny.y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            
+            // Granny moves towards player
+            if (dist > 0) {
+                granny.x += (dx / dist) * granny.speed;
+                granny.y += (dy / dist) * granny.speed;
+            }
+
+            // Granny catches player
+            let playerBox = { x: player.x, y: player.y, size: player.size, w: player.size, h: player.size };
+            let grannyBox = { x: granny.x, y: granny.y, size: granny.size, w: granny.size, h: granny.size };
+            if (checkCollision(playerBox, grannyBox)) {
+                days--;
+                if (days <= 0) {
+                    gameOver = true;
+                } else {
+                    // Reset positions for next day
+                    player.x = 50;
+                    player.y = 50;
+                    granny.x = 500;
+                    granny.y = 300;
+                }
+            }
+
+            // Item Pickups
+            if (!items.hammer.found && checkCollision(player, { x: items.hammer.x, y: items.hammer.y, w: items.hammer.size, h: items.hammer.size })) {
+                items.hammer.found = true;
+                inventory.push("Hammer");
+            }
+            if (!items.key.found && checkCollision(player, { x: items.key.x, y: items.key.y, w: items.key.size, h: items.key.size })) {
+                items.key.found = true;
+                inventory.push("Master Key");
+            }
+
+            // Update status text
+            statusDiv.innerText = `Days Left: ${days} | Inventory: ${inventory.join(", ") || "Empty"}`;
+        }
+
+        function draw() {
+            // Clear Screen
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameOver) {
+                ctx.fillStyle = "red";
+                ctx.font = "30px Courier New";
+                ctx.fillText("GRANNY SHOT YOU", 170, 180);
+                ctx.font = "20px Courier New";
+                ctx.fillText("Game Over - Day 5 Ended", 175, 220);
+                return;
+            }
+
+            if (gameWon) {
+                ctx.fillStyle = "green";
+                ctx.font = "30px Courier New";
+                ctx.fillText("YOU ESCAPED THE HOUSE!", 120, 200);
+                return;
+            }
+
+            // Draw Walls
+            walls.forEach(wall => {
+                ctx.fillStyle = wall.isDoor ? "#00ff00" : "#444";
+                ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+            });
+
+            // Draw Items
+            if (!items.hammer.found) {
+                ctx.fillStyle = items.hammer.color;
+                ctx.fillRect(items.hammer.x, items.hammer.y, items.hammer.size, items.hammer.size);
+            }
+            if (!items.key.found) {
+                ctx.fillStyle = items.key.color;
+                ctx.fillRect(items.key.x, items.key.y, items.key.size, items.key.size);
+            }
+
+            // Draw Player
+            ctx.fillStyle = "#0088ff";
+            ctx.fillRect(player.x, player.y, player.size, player.size);
+
+            // Draw Granny
+            ctx.fillStyle = "#ff2222";
+            ctx.fillRect(granny.x, granny.y, granny.size, granny.size);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
 </body>
 </html>
